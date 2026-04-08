@@ -16,12 +16,8 @@ import re
 import asyncio
 import requests
 
-from emergentintegrations.payments.stripe.checkout import (
-    StripeCheckout,
-    CheckoutSessionRequest,
-    CheckoutStatusResponse,
-)
-
+import json
+import stripe
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -167,6 +163,12 @@ class CheckoutStartResponse(BaseModel):
     session_id: str
 
 
+class CheckoutStatusResponse(BaseModel):
+    status: str
+    payment_status: str
+    metadata: Dict[str, str] = {}
+
+
 class PaymentStatusOut(BaseModel):
     session_id: str
     status: str
@@ -204,11 +206,6 @@ def validate_origin(origin_url: str) -> str:
         raise HTTPException(status_code=400, detail="Invalid origin URL")
     return origin
 
-
-def build_stripe_checkout(base_url: str) -> StripeCheckout:
-    host = base_url.rstrip("/")
-    webhook_url = f"{host}/api/webhook/stripe"
-    return StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
 
 
 async def get_current_user(
@@ -741,15 +738,27 @@ async def create_checkout_session(
         "price": f"{amount:.2f}",
     }
 
-    stripe_checkout = build_stripe_checkout(str(request.base_url))
-    checkout_request = CheckoutSessionRequest(
-        amount=float(f"{amount:.2f}"),
-        currency="inr",
+    stripe.api_key = STRIPE_API_KEY
+    checkout_session = await asyncio.to_thread(
+        stripe.checkout.Session.create,
+        payment_method_types=['card'],
+        line_items=[
+            {
+                'price_data': {
+                    'currency': 'inr',
+                    'product_data': {
+                        'name': 'Sasta Safar Ride',
+                    },
+                    'unit_amount': int(amount * 100),
+                },
+                'quantity': 1,
+            }
+        ],
+        mode='payment',
         success_url=success_url,
         cancel_url=cancel_url,
         metadata=metadata,
     )
-    checkout_session = await stripe_checkout.create_checkout_session(checkout_request)
 
     transaction_doc = {
         "id": str(uuid.uuid4()),
@@ -798,8 +807,13 @@ async def get_checkout_status(
     if tx["user_id"] != current_user["id"]:
         raise HTTPException(status_code=403, detail="You cannot access this transaction")
 
-    stripe_checkout = build_stripe_checkout(str(request.base_url))
-    checkout_status = await stripe_checkout.get_checkout_status(checkout_session_id=session_id)
+    stripe.api_key = STRIPE_API_KEY
+    stripe_session = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id)
+    checkout_status = CheckoutStatusResponse(
+        status=stripe_session.status,
+        payment_status=stripe_session.payment_status,
+        metadata=stripe_session.metadata or {}
+    )
     await sync_checkout_state(session_id, checkout_status)
 
     updated_tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
@@ -818,18 +832,35 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     signature = request.headers.get("Stripe-Signature")
 
-    stripe_checkout = build_stripe_checkout(str(request.base_url))
-    event = await stripe_checkout.handle_webhook(payload, signature)
+    stripe.api_key = STRIPE_API_KEY
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    try:
+        if webhook_secret:
+            event = stripe.Webhook.construct_event(
+                payload, signature, webhook_secret
+            )
+        else:
+            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    if event.session_id:
-        checkout_status = await stripe_checkout.get_checkout_status(event.session_id)
-        await sync_checkout_state(event.session_id, checkout_status)
+    event_type = event['type']
+    session_id = None
+
+    if event_type in ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed']:
+        session = event['data']['object']
+        session_id = session.get('id')
+        checkout_status = CheckoutStatusResponse(
+            status=session.get('status'),
+            payment_status=session.get('payment_status'),
+            metadata=session.get('metadata') or {}
+        )
+        await sync_checkout_state(session_id, checkout_status)
 
     return {
         "received": True,
-        "event_type": event.event_type,
-        "event_id": event.event_id,
-        "session_id": event.session_id,
+        "event_type": event_type,
+        "session_id": session_id,
     }
 
 @api_router.post("/status", response_model=StatusCheck)
