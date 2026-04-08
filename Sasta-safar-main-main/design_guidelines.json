@@ -1,0 +1,151 @@
+{
+  "identity": {
+    "name": "E1 - The Neo-Transit Designer",
+    "description": "A design system that blends the precision of Swiss transit maps with the energy of a road trip. It refuses to be boring.",
+    "principles": [
+      "Movement over Stagnation: The UI should feel like it's going somewhere.",
+      "Clarity is King: Maps and Prices must be instantly readable. No ambiguity.",
+      "High Contrast: Black on White, Indigo on Zinc. No washed-out greys.",
+      "Human Touch: Avatars and names are prominent. This is about people, not just cars."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Plus Jakarta Sans, sans-serif",
+      "body": "Outfit, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-5xl md:text-7xl font-bold tracking-tight leading-none",
+      "h2": "text-3xl md:text-5xl font-semibold tracking-tight",
+      "h3": "text-2xl md:text-3xl font-medium",
+      "body_lg": "text-lg md:text-xl leading-relaxed",
+      "body_base": "text-base leading-relaxed",
+      "caption": "text-xs uppercase tracking-widest font-bold text-muted-foreground"
+    },
+    "instructions": "Import 'Plus Jakarta Sans' and 'Outfit' from Google Fonts. Use Plus Jakarta Sans for all Headings (h1-h3) and buttons. Use Outfit for body text and inputs."
+  },
+  "colors": {
+    "palette": {
+      "background": "#fafafa",
+      "foreground": "#18181b",
+      "primary": "#4338ca",
+      "primary_foreground": "#ffffff",
+      "secondary": "#f97316",
+      "secondary_foreground": "#ffffff",
+      "accent": "#f4f4f5",
+      "accent_foreground": "#18181b",
+      "muted": "#e4e4e7",
+      "muted_foreground": "#71717a",
+      "card": "#ffffff",
+      "card_foreground": "#18181b",
+      "border": "#e4e4e7",
+      "input": "#e4e4e7",
+      "ring": "#4338ca",
+      "destructive": "#ef4444",
+      "success": "#22c55e"
+    },
+    "usage": {
+      "primary": "Use for Main CTAs (Book Ride, Post Ride) and active states.",
+      "secondary": "Use for 'Urgent' or 'Highlight' actions (Special Offer, New Request).",
+      "background": "Keep the app mostly White/Zinc-50. Do not use dark mode by default, but support it structurally.",
+      "text": "Headings are Zinc-900 (Almost Black). Body is Zinc-700. Never use pure black #000000."
+    }
+  },
+  "spacing": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "section_padding": "py-16 md:py-24",
+    "component_padding": "p-6 md:p-8",
+    "grid_gap": "gap-6 md:gap-8"
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-8 py-6 font-bold shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 active:scale-95",
+      "secondary": "bg-white text-foreground border-2 border-input hover:border-foreground hover:bg-accent rounded-full px-8 py-6 font-bold transition-all",
+      "ghost": "hover:bg-accent hover:text-accent-foreground rounded-full px-4 py-2 font-medium"
+    },
+    "cards": {
+      "ride_card": "bg-card rounded-3xl border border-border/50 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group overflow-hidden",
+      "feature_card": "bg-accent/50 rounded-2xl p-8 border border-transparent hover:border-primary/20 transition-colors"
+    },
+    "inputs": {
+      "default": "h-12 rounded-xl border-2 border-input bg-transparent px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary transition-all font-medium placeholder:text-muted-foreground/50"
+    },
+    "badges": {
+      "status": "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+    }
+  },
+  "visual_enhancers": {
+    "shadows": {
+      "soft": "shadow-[0_8px_30px_rgb(0,0,0,0.04)]",
+      "glow": "shadow-[0_0_20px_rgba(67,56,202,0.3)]"
+    },
+    "borders": {
+      "subtle": "border border-zinc-200 dark:border-zinc-800",
+      "active": "border-2 border-primary"
+    },
+    "glass": "backdrop-blur-md bg-white/70 border border-white/20 shadow-sm"
+  },
+  "layout_strategies": {
+    "landing_hero": "Split screen or Center Focus. If Split: Left side Typography (Big, Bold), Right side Hero Image with 'floating' ride cards.",
+    "dashboard": "Sidebar Layout. Main content area white card with subtle shadow. Sidebar minimal.",
+    "search_results": "Split View: Left side List of Rides (Scrollable), Right side Sticky Map (Full height). On mobile: Toggle between List/Map.",
+    "forms": "Step-by-step wizards. Do not show all fields at once. Use 'motion' to slide between steps."
+  },
+  "motion": {
+    "page_transition": "initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}",
+    "hover_lift": "whileHover={{ y: -4 }} transition={{ type: 'spring', stiffness: 300 }}",
+    "list_stagger": "variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } }}"
+  },
+  "accessibility": {
+    "rules": [
+      "Ensure 4.5:1 contrast ratio for text.",
+      "Use focus-visible rings for keyboard navigation.",
+      "All images must have alt text.",
+      "Forms must have labels (visible or aria-label)."
+    ]
+  },
+  "image_urls": {
+    "hero": {
+      "url": "https://images.unsplash.com/photo-1722438475609-98268982db82?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MjJ8MHwxfHNlYXJjaHwxfHxoYXBweSUyMGZyaWVuZHMlMjByb2FkJTIwdHJpcCUyMGNhcnxlbnwwfHx8fDE3NzM0OTU1MTh8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Happy friends on a road trip, carpooling",
+      "category": "hero"
+    },
+    "car_sedan": {
+      "url": "https://images.unsplash.com/photo-1723590184608-bdcac5fe8f8a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBjYXIlMjBzaWRlJTIwdmlldyUyMHdoaXRlJTIwYmFja2dyb3VuZHxlbnwwfHx8fDE3NzM0OTU1MTl8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Modern white sedan car side view",
+      "category": "vehicle"
+    },
+    "people_avatars": [
+      "https://images.unsplash.com/photo-1675186914580-94356f7c012c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwxfHxkaXZlcnNlJTIwcHJvZmVzc2lvbmFsJTIwcG9ydHJhaXRzJTIwc21pbGluZ3xlbnwwfHx8fDE3NzM0OTU1MjB8MA&ixlib=rb-4.1.0&q=85",
+      "https://images.unsplash.com/photo-1658909835269-e76abd3ffb5d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwzfHxkaXZlcnNlJTIwcHJvZmVzc2lvbmFsJTIwcG9ydHJhaXRzJTIwc21pbGluZ3xlbnwwfHx8fDE3NzM0OTU1MjB8MA&ixlib=rb-4.1.0&q=85",
+      "https://images.unsplash.com/photo-1607639106901-28314a0a622e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwyfHxkaXZlcnNlJTIwcHJvZmVzc2lvbmFsJTIwcG9ydHJhaXRzJTIwc21pbGluZ3xlbnwwfHx8fDE3NzM0OTU1MjB8MA&ixlib=rb-4.1.0&q=85",
+      "https://images.unsplash.com/photo-1652772589253-c1ab2308fbf4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHw0fHxkaXZlcnNlJTIwcHJvZmVzc2lvbmFsJTIwcG9ydHJhaXRzJTIwc21pbGluZ3xlbnwwfHx8fDE3NzM0OTU1MjB8MA&ixlib=rb-4.1.0&q=85"
+    ],
+    "friends_car": {
+      "url": "https://images.unsplash.com/photo-1561065475-b0dc9f889ee7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwxfHxmcmllbmRzJTIwbGF1Z2hpbmclMjBpbiUyMGNhciUyMHJvYWQlMjB0cmlwfGVufDB8fHx8MTc3MzQ5NTUyNnww&ixlib=rb-4.1.0&q=85",
+      "alt": "Two friends laughing inside a car",
+      "category": "lifestyle"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Install 'leaflet' and 'react-leaflet' for maps.",
+    "Install 'framer-motion' for animations.",
+    "Install '@stripe/react-stripe-js' and '@stripe/stripe-js' for payments.",
+    "Use 'lucide-react' for icons.",
+    "Update tailwind.config.js with the colors specified in the 'colors' section.",
+    "Create a 'Layout' component that wraps the app with the Header and Footer.",
+    "Use the provided image URLs for the respective sections.",
+    "For the Map: Use OpenStreetMap tiles. Do not require a Google Maps API key.",
+    "Ensure the Ride Post form is split into logical steps (Route -> Details -> Price).",
+    "Use 'sonner' for all toast notifications (success/error)."
+  ],
+  "UNIVERSAL_GUIDELINES": [
+    "Do not use gradients for backgrounds. Keep it clean solid colors or subtle mesh if absolutely necessary.",
+    "Avoid generic 'Bootstrap' column layouts. Use asymmetric grids.",
+    "Interactive elements must have a distinct hover state.",
+    "Use 'sonner' for toasts.",
+    "Ensure all buttons have a 'disabled' state while loading.",
+    "Maps should be interactive but not steal scroll focus immediately (use 'scrollWheelZoom={false}' initially)."
+  ]
+}
