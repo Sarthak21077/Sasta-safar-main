@@ -10,7 +10,7 @@ from typing import List, Optional, Literal, Dict
 import uuid
 from datetime import datetime, timezone, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import re
 import asyncio
@@ -31,7 +31,7 @@ JWT_ALGORITHM = "HS256"
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
 TOKEN_EXPIRE_HOURS = 48
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Native bcrypt used instead of pwd_context
 security = HTTPBearer()
 
 # Create the main app without a prefix
@@ -183,11 +183,13 @@ def utc_now_iso() -> str:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return pwd_context.verify(password, hashed)
+    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
 def create_token(user_id: str, email: str) -> str:
