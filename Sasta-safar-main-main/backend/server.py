@@ -375,37 +375,53 @@ async def root():
 
 @api_router.post("/auth/register", response_model=AuthResponse)
 async def register(input_data: UserRegister):
-    email = input_data.email.lower().strip()
-    existing = await db.users.find_one({"email": email}, {"_id": 0})
-    if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
+    try:
+        email = input_data.email.lower().strip()
+        existing = await db.users.find_one({"email": email}, {"_id": 0})
+        if existing:
+            raise HTTPException(status_code=409, detail="Email already registered")
 
-    user_doc = {
-        "id": str(uuid.uuid4()),
-        "name": input_data.name.strip(),
-        "email": email,
-        "phone": input_data.phone.strip(),
-        "role": "both",
-        "password_hash": hash_password(input_data.password),
-        "created_at": utc_now_iso(),
-    }
-    await db.users.insert_one(user_doc)
+        user_doc = {
+            "id": str(uuid.uuid4()),
+            "name": input_data.name.strip(),
+            "email": email,
+            "phone": input_data.phone.strip(),
+            "role": "both",
+            "password_hash": hash_password(input_data.password),
+            "created_at": utc_now_iso(),
+        }
+        await db.users.insert_one(user_doc)
 
-    token = create_token(user_doc["id"], user_doc["email"])
-    user_public = UserPublic(**{k: user_doc[k] for k in ["id", "name", "email", "phone", "role", "created_at"]})
-    return AuthResponse(token=token, user=user_public)
+        token = create_token(user_doc["id"], user_doc["email"])
+        user_public = UserPublic(**{k: user_doc[k] for k in ["id", "name", "email", "phone", "role", "created_at"]})
+        return AuthResponse(token=token, user=user_public)
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        import logging
+        logging.error(f"Registration crash: {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"Server error: {str(e)}")
 
 
 @api_router.post("/auth/login", response_model=AuthResponse)
 async def login(input_data: UserLogin):
-    email = input_data.email.lower().strip()
-    user = await db.users.find_one({"email": email}, {"_id": 0})
-    if not user or not verify_password(input_data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    try:
+        email = input_data.email.lower().strip()
+        user = await db.users.find_one({"email": email}, {"_id": 0})
+        if not user or not verify_password(input_data.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_token(user["id"], user["email"])
-    user_public = UserPublic(**{k: user[k] for k in ["id", "name", "email", "phone", "role", "created_at"]})
-    return AuthResponse(token=token, user=user_public)
+        token = create_token(user["id"], user["email"])
+        user_public = UserPublic(**{k: user[k] for k in ["id", "name", "email", "phone", "role", "created_at"]})
+        return AuthResponse(token=token, user=user_public)
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        import logging
+        logging.error(f"Login crash: {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"Server error: {str(e)}")
 
 
 @api_router.get("/auth/me", response_model=UserPublic)
