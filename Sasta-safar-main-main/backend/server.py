@@ -17,9 +17,6 @@ import asyncio
 import requests
 import json
 import stripe
-import firebase_admin
-from firebase_admin import credentials, auth as firebase_auth
-
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -31,14 +28,6 @@ JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 JWT_ALGORITHM = "HS256"
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
 TOKEN_EXPIRE_HOURS = 48
-
-# Initialize Firebase Admin
-firebase_service_account_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
-if firebase_service_account_path and os.path.exists(ROOT_DIR / firebase_service_account_path):
-    cred = credentials.Certificate(str(ROOT_DIR / firebase_service_account_path))
-    firebase_admin.initialize_app(cred)
-else:
-    logging.warning("Firebase service account JSON not found, Firebase auth will fail.")
 
 # Native bcrypt used instead of pwd_context
 security = HTTPBearer()
@@ -73,11 +62,7 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-class FirebaseSyncInput(BaseModel):
-    firebase_token: str
-    name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
+
 
 
 class UserPublic(BaseModel):
@@ -388,63 +373,42 @@ async def root():
     return {"message": "Sasta Safar API is running"}
 
 
-@api_router.post("/auth/firebase-sync", response_model=AuthResponse)
-async def firebase_sync(input_data: FirebaseSyncInput):
-    try:
-        # Verify the Firebase ID token
-        decoded_token = firebase_auth.verify_id_token(input_data.firebase_token)
-        uid = decoded_token.get("uid")
-        token_email = decoded_token.get("email")
-        token_phone = decoded_token.get("phone_number")
-        
-        if not uid:
-            raise HTTPException(status_code=401, detail="Invalid Firebase token")
+@api_router.post("/auth/register", response_model=AuthResponse)
+async def register(input_data: UserRegister):
+    existing_user = await db.users.find_one({"email": input_data.email.lower().strip()})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-        # Prioritize token claims, fallback to input data if claims are missing
-        email = token_email or input_data.email
-        if email:
-            email = email.lower().strip()
-        phone = token_phone or input_data.phone
-        if phone:
-            phone = phone.strip()
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "name": input_data.name.strip(),
+        "email": input_data.email.lower().strip(),
+        "phone": input_data.phone.strip(),
+        "password_hash": hash_password(input_data.password),
+        "role": "both",
+        "created_at": utc_now_iso(),
+    }
+    await db.users.insert_one(user_doc)
+    
+    token = create_token(user_doc["id"], user_doc["email"])
+    user_public_data = {k: user_doc.get(k, "") for k in ["id", "name", "email", "phone", "role", "created_at"]}
+    user_public = UserPublic(**user_public_data)
+    return AuthResponse(token=token, user=user_public)
 
-        # Check if user exists by Firebase UID or Email
-        query = {"$or": [{"firebase_uid": uid}]}
-        if email:
-            query["$or"].append({"email": email})
-        
-        user_doc = await db.users.find_one(query, {"_id": 0})
-        
-        if not user_doc:
-            # User doesn't exist, create them
-            name = input_data.name.strip() if input_data.name else "New User"
-            user_doc = {
-                "id": str(uuid.uuid4()),
-                "firebase_uid": uid,
-                "name": name,
-                "email": email or f"{uid}@placeholder.com",
-                "phone": phone or "",
-                "role": "both",
-                "created_at": utc_now_iso(),
-            }
-            await db.users.insert_one(user_doc)
-        else:
-            # Update missing firebase_uid if matched by email
-            if "firebase_uid" not in user_doc:
-                await db.users.update_one({"id": user_doc["id"]}, {"$set": {"firebase_uid": uid}})
 
-        # Create our internal JWT token
-        token = create_token(user_doc["id"], user_doc.get("email", ""))
-        user_public_data = {k: user_doc.get(k, "") for k in ["id", "name", "email", "phone", "role", "created_at"]}
-        if not user_public_data.get("phone"): user_public_data["phone"] = ""
-        user_public = UserPublic(**user_public_data)
+@api_router.post("/auth/login", response_model=AuthResponse)
+async def login(input_data: UserLogin):
+    user_doc = await db.users.find_one({"email": input_data.email.lower().strip()})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
         
-        return AuthResponse(token=token, user=user_public)
-    except Exception as e:
-        import traceback
-        import logging
-        logging.error(f"Firebase sync crash: {traceback.format_exc()}")
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+    if not verify_password(input_data.password, user_doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    token = create_token(user_doc["id"], user_doc["email"])
+    user_public_data = {k: user_doc.get(k, "") for k in ["id", "name", "email", "phone", "role", "created_at"]}
+    user_public = UserPublic(**user_public_data)
+    return AuthResponse(token=token, user=user_public)
 
 @api_router.get("/auth/me", response_model=UserPublic)
 async def me(current_user: dict = Depends(get_current_user)):

@@ -23,20 +23,26 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  const firebaseSync = async (firebase_token, userData = {}) => {
+  const login = async (email, password) => {
     try {
-      const response = await api.post("/auth/firebase-sync", {
-        firebase_token,
-        name: userData.name,
-        email: userData.email,
-        phone: userData.phone,
-      });
+      const response = await api.post("/auth/login", { email, password });
       persistAuth(response.data.token, response.data.user);
-      toast.success("Welcome!");
+      toast.success("Welcome back!");
       return true;
     } catch (error) {
-      console.error("Firebase sync error:", error);
-      toast.error(error.response?.data?.detail || "Authentication failed");
+      toast.error(error.response?.data?.detail || "Login failed");
+      return false;
+    }
+  };
+
+  const register = async (userData) => {
+    try {
+      const response = await api.post("/auth/register", userData);
+      persistAuth(response.data.token, response.data.user);
+      toast.success("Registration successful!");
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Registration failed");
       return false;
     }
   };
@@ -67,7 +73,7 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const value = useMemo(
-    () => ({ user, token, loading, firebaseSync, logout }),
+    () => ({ user, token, loading, login, register, logout }),
     [user, token, loading],
   );
 
