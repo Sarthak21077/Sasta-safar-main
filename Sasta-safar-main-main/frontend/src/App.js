@@ -11,7 +11,7 @@ import PostRidePage from "@/pages/PostRidePage";
 import SearchRidesPage from "@/pages/SearchRidesPage";
 import DriverRequestsPage from "@/pages/DriverRequestsPage";
 import MyBookingsPage from "@/pages/MyBookingsPage";
-import PaymentResultPage from "@/pages/PaymentResultPage";
+
 import AboutPage from "@/pages/AboutPage";
 import ContactPage from "@/pages/ContactPage";
 import SafetyPage from "@/pages/SafetyPage";
@@ -64,22 +64,6 @@ function App() {
               element={
                 <ProtectedRoute>
                   <SafetyPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/payment/success"
-              element={
-                <ProtectedRoute>
-                  <PaymentResultPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/payment/cancel"
-              element={
-                <ProtectedRoute>
-                  <PaymentResultPage />
                 </ProtectedRoute>
               }
             />

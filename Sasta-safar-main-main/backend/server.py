@@ -16,7 +16,7 @@ import re
 import asyncio
 import requests
 import json
-import stripe
+import razorpay
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -26,7 +26,9 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 JWT_ALGORITHM = "HS256"
-STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "test_id")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "test_secret")
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 TOKEN_EXPIRE_HOURS = 48
 
 # Native bcrypt used instead of pwd_context
@@ -153,24 +155,25 @@ class BookingRequestOut(BaseModel):
     updated_at: str
 
 
-class CheckoutCreate(BaseModel):
+class RazorpayOrderCreate(BaseModel):
     request_id: str
-    origin_url: str
 
 
-class CheckoutStartResponse(BaseModel):
-    checkout_url: str
-    session_id: str
+class RazorpayOrderResponse(BaseModel):
+    order_id: str
+    amount: float
+    currency: str
+    key_id: str
 
 
-class CheckoutStatusResponse(BaseModel):
-    status: str
-    payment_status: str
-    metadata: Dict[str, str] = {}
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_payment_id: str
+    razorpay_order_id: str
+    razorpay_signature: str
 
 
 class PaymentStatusOut(BaseModel):
-    session_id: str
+    order_id: str
     status: str
     payment_status: str
     amount: float
@@ -296,13 +299,13 @@ def parse_ride_departure(date_value: str, time_value: str) -> Optional[datetime]
         return None
 
 
-async def sync_paid_booking(session_id: str) -> None:
-    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+async def sync_paid_booking(order_id: str) -> None:
+    tx = await db.payment_transactions.find_one({"session_id": order_id}, {"_id": 0})
     if not tx or tx.get("processed"):
         return
 
     process_result = await db.payment_transactions.update_one(
-        {"session_id": session_id, "processed": {"$ne": True}},
+        {"session_id": order_id, "processed": {"$ne": True}},
         {"$set": {"processed": True, "updated_at": utc_now_iso()}},
     )
     if process_result.modified_count == 0:
@@ -343,29 +346,6 @@ async def sync_paid_booking(session_id: str) -> None:
         {"$set": {"seat_locked": True, "updated_at": utc_now_iso()}},
     )
 
-
-async def sync_checkout_state(
-    session_id: str,
-    checkout_status: CheckoutStatusResponse,
-) -> None:
-    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if not tx:
-        return
-
-    await db.payment_transactions.update_one(
-        {"session_id": session_id},
-        {
-            "$set": {
-                "status": checkout_status.status,
-                "payment_status": checkout_status.payment_status,
-                "metadata": checkout_status.metadata,
-                "updated_at": utc_now_iso(),
-            }
-        },
-    )
-
-    if checkout_status.payment_status == "paid":
-        await sync_paid_booking(session_id)
 
 # Add your routes to the router instead of directly to app
 @api_router.get("/")
@@ -714,10 +694,9 @@ async def decide_request(request_id: str, input_data: BookingDecision, current_u
     return BookingRequestOut(**updated)
 
 
-@api_router.post("/payments/checkout/session", response_model=CheckoutStartResponse)
-async def create_checkout_session(
-    input_data: CheckoutCreate,
-    request: Request,
+@api_router.post("/payments/razorpay/order", response_model=RazorpayOrderResponse)
+async def create_razorpay_order(
+    input_data: RazorpayOrderCreate,
     current_user: dict = Depends(get_current_user),
 ):
     booking_request = await db.booking_requests.find_one(
@@ -731,9 +710,6 @@ async def create_checkout_session(
     if booking_request["payment_status"] == "paid":
         raise HTTPException(status_code=400, detail="Payment already completed")
 
-    origin = validate_origin(input_data.origin_url)
-    success_url = f"{origin}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{origin}/payment/cancel?request_id={booking_request['id']}"
     amount = round(float(booking_request["offered_price"]), 2)
 
     metadata = {
@@ -741,40 +717,28 @@ async def create_checkout_session(
         "ride_id": booking_request["ride_id"],
         "rider_id": booking_request["rider_id"],
         "driver_id": booking_request["driver_id"],
-        "price": f"{amount:.2f}",
     }
 
-    stripe.api_key = STRIPE_API_KEY
-    checkout_session = await asyncio.to_thread(
-        stripe.checkout.Session.create,
-        payment_method_types=['card'],
-        line_items=[
-            {
-                'price_data': {
-                    'currency': 'inr',
-                    'product_data': {
-                        'name': 'Sasta Safar Ride',
-                    },
-                    'unit_amount': int(amount * 100),
-                },
-                'quantity': 1,
-            }
-        ],
-        mode='payment',
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata=metadata,
-    )
+    try:
+        order_data = {
+            "amount": int(amount * 100),
+            "currency": "INR",
+            "receipt": f"receipt_{booking_request['id']}",
+            "notes": metadata,
+        }
+        razorpay_order = await asyncio.to_thread(razorpay_client.order.create, data=order_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     transaction_doc = {
         "id": str(uuid.uuid4()),
-        "session_id": checkout_session.session_id,
+        "session_id": razorpay_order["id"], # Using session_id as order_id to minimize DB changes
         "request_id": booking_request["id"],
         "ride_id": booking_request["ride_id"],
         "user_id": current_user["id"],
         "amount": amount,
-        "currency": "inr",
-        "status": "initiated",
+        "currency": "INR",
+        "status": "created",
         "payment_status": "unpaid",
         "metadata": metadata,
         "payment_id": "",
@@ -788,86 +752,67 @@ async def create_checkout_session(
         {"id": booking_request["id"]},
         {
             "$set": {
-                "payment_session_id": checkout_session.session_id,
+                "payment_session_id": razorpay_order["id"],
                 "payment_status": "pending_payment",
                 "updated_at": utc_now_iso(),
             }
         },
     )
 
-    return CheckoutStartResponse(
-        checkout_url=checkout_session.url,
-        session_id=checkout_session.session_id,
+    return RazorpayOrderResponse(
+        order_id=razorpay_order["id"],
+        amount=amount,
+        currency="INR",
+        key_id=RAZORPAY_KEY_ID,
     )
 
 
-@api_router.get("/payments/checkout/status/{session_id}", response_model=PaymentStatusOut)
-async def get_checkout_status(
-    session_id: str,
-    request: Request,
+@api_router.post("/payments/razorpay/verify", response_model=PaymentStatusOut)
+async def verify_razorpay_payment(
+    input_data: RazorpayVerifyRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    try:
+        await asyncio.to_thread(
+            razorpay_client.utility.verify_payment_signature,
+            {
+                "razorpay_order_id": input_data.razorpay_order_id,
+                "razorpay_payment_id": input_data.razorpay_payment_id,
+                "razorpay_signature": input_data.razorpay_signature,
+            },
+        )
+    except razorpay.errors.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    tx = await db.payment_transactions.find_one({"session_id": input_data.razorpay_order_id}, {"_id": 0})
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     if tx["user_id"] != current_user["id"]:
         raise HTTPException(status_code=403, detail="You cannot access this transaction")
 
-    stripe.api_key = STRIPE_API_KEY
-    stripe_session = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id)
-    checkout_status = CheckoutStatusResponse(
-        status=stripe_session.status,
-        payment_status=stripe_session.payment_status,
-        metadata=stripe_session.metadata or {}
+    await db.payment_transactions.update_one(
+        {"session_id": input_data.razorpay_order_id},
+        {
+            "$set": {
+                "status": "paid",
+                "payment_status": "paid",
+                "payment_id": input_data.razorpay_payment_id,
+                "updated_at": utc_now_iso(),
+            }
+        },
     )
-    await sync_checkout_state(session_id, checkout_status)
 
-    updated_tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    await sync_paid_booking(input_data.razorpay_order_id)
+
+    updated_tx = await db.payment_transactions.find_one({"session_id": input_data.razorpay_order_id}, {"_id": 0})
     return PaymentStatusOut(
-        session_id=session_id,
-        status=updated_tx.get("status", checkout_status.status),
-        payment_status=updated_tx.get("payment_status", checkout_status.payment_status),
+        order_id=updated_tx["session_id"],
+        status=updated_tx.get("status", "paid"),
+        payment_status=updated_tx.get("payment_status", "paid"),
         amount=updated_tx.get("amount", 0.0),
-        currency=updated_tx.get("currency", "inr"),
+        currency=updated_tx.get("currency", "INR"),
         metadata=updated_tx.get("metadata", {}),
     )
-
-
-@api_router.post("/webhook/stripe")
-async def stripe_webhook(request: Request):
-    payload = await request.body()
-    signature = request.headers.get("Stripe-Signature")
-
-    stripe.api_key = STRIPE_API_KEY
-    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
-    try:
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(
-                payload, signature, webhook_secret
-            )
-        else:
-            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    event_type = event['type']
-    session_id = None
-
-    if event_type in ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed']:
-        session = event['data']['object']
-        session_id = session.get('id')
-        checkout_status = CheckoutStatusResponse(
-            status=session.get('status'),
-            payment_status=session.get('payment_status'),
-            metadata=session.get('metadata') or {}
-        )
-        await sync_checkout_state(session_id, checkout_status)
-
-    return {
-        "received": True,
-        "event_type": event_type,
-        "session_id": session_id,
-    }
 
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
