@@ -723,7 +723,7 @@ async def create_razorpay_order(
         order_data = {
             "amount": int(amount * 100),
             "currency": "INR",
-            "receipt": f"receipt_{booking_request['id']}",
+            "receipt": booking_request['id'][:40],
             "notes": metadata,
         }
         razorpay_order = await asyncio.to_thread(razorpay_client.order.create, data=order_data)
